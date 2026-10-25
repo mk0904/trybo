@@ -1,0 +1,82 @@
+// Prisma Schema for Trybo (Try Before You Buy)
+// Uses SQLite for zero-setup local development.
+// To deploy with PostgreSQL (Neon / Supabase / Render), change provider to "postgresql".
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  phone        String
+  role         String   @default("CUSTOMER") // "CUSTOMER" or "RIDER"
+  createdAt    DateTime @default(now())
+
+  // Rider-specific status
+  isOnline     Boolean  @default(false)
+
+  // Relations
+  customerOrders Order[] @relation("CustomerOrders")
+  riderOrders    Order[] @relation("RiderOrders")
+}
+
+model Product {
+  id             Int         @id @default(autoincrement())
+  externalId     Int?        @unique
+  title          String
+  category       String
+  price          Float
+  imageUrl       String
+  description    String
+  availableSizes String      @default("[\"S\",\"M\",\"L\",\"XL\"]") // JSON string of sizes
+  createdAt      DateTime    @default(now())
+
+  orderItems     OrderItem[]
+}
+
+model Order {
+  id                   String      @id @default(uuid())
+  customerId           String
+  riderId              String?
+  status               String      @default("SEARCHING_RIDER")
+  // Allowed statuses:
+  // SEARCHING_RIDER -> RIDER_ASSIGNED -> PICKED_UP -> AT_DOORSTEP
+  // -> TRY_IN_PROGRESS -> DECISION_SUBMITTED -> COMPLETED | CANCELLED
+
+  deliveryAddress      String
+  handoverOtp          String      // 4-digit OTP to start try session
+  returnOtp            String      // 4-digit OTP to confirm returned items
+
+  maxHoldAmount        Float       // Total price of all items if kept
+  finalAmountPaid      Float       @default(0)
+
+  tryStartedAt         DateTime?
+  tryDurationSeconds   Int         @default(900) // 15 minutes
+
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  customer             User        @relation("CustomerOrders", fields: [customerId], references: [id])
+  rider                User?       @relation("RiderOrders", fields: [riderId], references: [id])
+  items                OrderItem[]
+}
+
+model OrderItem {
+  id           String  @id @default(uuid())
+  orderId      String
+  productId    Int
+  sizeSelected String
+  priceAtOrder Float
+  decision     String  @default("PENDING") // "PENDING", "KEPT", "RETURNED"
+
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      Product @relation(fields: [productId], references: [id])
+}
